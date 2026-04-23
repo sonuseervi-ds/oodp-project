@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EduPulse — Student Performance Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a26;
+    --surface3: #22223a;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.13);
+    --text: #f0eeff;
+    --muted: #8b8aaa;
+    --dim: #4a4a6a;
+    --accent: #7c6eff;
+    --accent2: #b8aaff;
+    --teal: #00d4aa;
+    --coral: #ff6b6b;
+    --amber: #ffb347;
+    --blue: #4fc3f7;
+    --pink: #f06292;
+    --green: #69f0ae;
+    --radius: 14px;
+    --radius-sm: 8px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Subtle background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(124,110,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124,110,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app { position: relative; z-index: 1; display: flex; min-height: 100vh; }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    width: 260px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--dim) transparent;
+  }
+
+  .logo {
+    padding: 28px 24px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo-mark {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 22px;
+    color: var(--text);
+    letter-spacing: -0.5px;
+  }
+  .logo-mark span { color: var(--accent); }
+  .logo-sub { font-size: 11px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
+
+  .nav { padding: 16px 12px; flex: 1; }
+  .nav-label { font-size: 10px; color: var(--dim); letter-spacing: 2px; text-transform: uppercase; padding: 8px 12px 6px; }
+
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: var(--radius-sm);
+    cursor: pointer; font-size: 14px; color: var(--muted);
+    transition: all 0.2s; margin-bottom: 2px;
+  }
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active { background: rgba(124,110,255,0.15); color: var(--accent2); }
+  .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+  .student-list { padding: 0 12px 16px; }
+  .student-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; border-radius: var(--radius-sm);
+    cursor: pointer; transition: all 0.2s; margin-bottom: 1px;
+  }
+  .student-item:hover { background: var(--surface2); }
+  .student-item.selected { background: rgba(124,110,255,0.12); }
+  .student-avatar {
+    width: 30px; height: 30px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600; flex-shrink: 0;
+    font-family: 'Syne', sans-serif;
+  }
+  .student-name { font-size: 13px; color: var(--muted); flex: 1; }
+  .student-grade {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px; font-weight: 500;
+    padding: 2px 7px; border-radius: 20px;
+  }
+
+  /* ── MAIN ── */
+  .main { margin-left: 260px; flex: 1; padding: 32px 36px; max-width: 1200px; }
+
+  /* ── TOP BAR ── */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 32px;
+  }
+  .page-title { font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 700; }
+  .page-title span { color: var(--accent); }
+
+  .search-bar {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 50px; padding: 8px 16px;
+    font-size: 13px; color: var(--muted);
+    cursor: pointer; transition: border-color 0.2s;
+  }
+  .search-bar:hover { border-color: var(--border2); }
+
+  /* ── STAT CARDS ── */
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px 22px;
+    position: relative; overflow: hidden; cursor: default;
+    transition: border-color 0.25s, transform 0.2s;
+  }
+  .stat-card:hover { border-color: var(--border2); transform: translateY(-2px); }
+  .stat-card::after {
+    content: ''; position: absolute;
+    top: 0; left: 0; right: 0; height: 2px;
+  }
+  .stat-card.c1::after { background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+  .stat-card.c2::after { background: linear-gradient(90deg, var(--teal), #00f5c3); }
+  .stat-card.c3::after { background: linear-gradient(90deg, var(--coral), #ff9a9a); }
+  .stat-card.c4::after { background: linear-gradient(90deg, var(--amber), #ffd47a); }
+
+  .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 10px; }
+  .stat-value { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 700; line-height: 1; margin-bottom: 6px; }
+  .stat-sub { font-size: 12px; color: var(--muted); }
+  .stat-icon { position: absolute; top: 18px; right: 18px; font-size: 22px; opacity: 0.3; }
+
+  /* ── GRID LAYOUT ── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 22px;
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: var(--border2); }
+  .card-title {
+    font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 600;
+    color: var(--text); margin-bottom: 18px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card-title .dot { width: 6px; height: 6px; border-radius: 50%; }
+
+  /* Chart containers */
+  .chart-wrap { position: relative; width: 100%; }
+
+  /* ── STUDENT DETAIL PANEL ── */
+  .detail-header {
+    display: flex; align-items: center; gap: 16px; margin-bottom: 22px;
+  }
+  .detail-avatar {
+    width: 56px; height: 56px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 700; font-family: 'Syne', sans-serif;
+  }
+  .detail-name { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 700; }
+  .detail-meta { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .grade-badge {
+    margin-left: auto;
+    font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800;
+    width: 60px; height: 60px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid;
+  }
+
+  /* Subject scores */
+  .subject-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .subject-name { font-size: 13px; color: var(--muted); width: 85px; flex-shrink: 0; }
+  .subject-bar-wrap { flex: 1; background: var(--surface3); border-radius: 20px; height: 8px; overflow: hidden; }
+  .subject-bar { height: 100%; border-radius: 20px; transition: width 0.8s cubic-bezier(0.4,0,0.2,1); }
+  .subject-score { font-family: 'DM Mono', monospace; font-size: 13px; font-weight: 500; width: 36px; text-align: right; }
+
+  /* Attendance ring */
+  .attendance-ring-wrap { display: flex; align-items: center; justify-content: center; padding: 10px 0; }
+
+  /* ── TABLE ── */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px;
+    color: var(--dim); font-weight: 500;
+    padding: 8px 12px; text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 11px 12px; font-size: 13px; color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+  tr:hover td { background: rgba(124,110,255,0.04); }
+  tr.selected-row td { background: rgba(124,110,255,0.08); }
+  td:first-child { color: var(--text); }
+  .rank-badge {
+    font-family: 'DM Mono', monospace; font-size: 11px;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--surface3);
+  }
+  .perf-pill {
+    font-size: 11px; padding: 3px 9px; border-radius: 20px;
+    font-weight: 500; display: inline-block;
+  }
+  .perf-A { background: rgba(105,240,174,0.15); color: var(--green); }
+  .perf-B { background: rgba(79,195,247,0.15); color: var(--blue); }
+  .perf-C { background: rgba(255,179,71,0.15); color: var(--amber); }
+  .perf-D { background: rgba(255,107,107,0.15); color: var(--coral); }
+
+  /* ── TABS ── */
+  .tabs { display: flex; gap: 4px; margin-bottom: 22px; }
+  .tab {
+    padding: 8px 18px; border-radius: 50px;
+    font-size: 13px; cursor: pointer; transition: all 0.2s;
+    color: var(--muted); border: 1px solid transparent;
+  }
+  .tab:hover { color: var(--text); border-color: var(--border); }
+  .tab.active { background: rgba(124,110,255,0.2); color: var(--accent2); border-color: rgba(124,110,255,0.3); }
+
+  /* scroll */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--dim); border-radius: 10px; }
+
+  /* Separator */
+  .sep { height: 1px; background: var(--border); margin: 20px 0; }
+
+  /* Legend */
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+  .legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+  /* Full-width card */
+  .card-full { grid-column: 1 / -1; }
+
+  /* fade-in */
+  @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:none; } }
+  .stat-card, .card { animation: fadeUp 0.4s ease both; }
+  .stat-card:nth-child(1) { animation-delay: 0.05s; }
+  .stat-card:nth-child(2) { animation-delay: 0.1s; }
+  .stat-card:nth-child(3) { animation-delay: 0.15s; }
+  .stat-card:nth-child(4) { animation-delay: 0.2s; }
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="logo">
+    <div class="logo-mark">Edu<span>Pulse</span></div>
+    <div class="logo-sub">Student Tracker</div>
+  </div>
+
+  <nav class="nav">
+    <div class="nav-label">Menu</div>
+    <div class="nav-item active"><span class="nav-icon">◈</span> Dashboard</div>
+    <div class="nav-item"><span class="nav-icon">◉</span> Performance</div>
+    <div class="nav-item"><span class="nav-icon">◎</span> Attendance</div>
+    <div class="nav-item"><span class="nav-icon">⬡</span> Reports</div>
+    <div class="nav-item"><span class="nav-icon">⊕</span> Add Student</div>
+
+    <div class="nav-label" style="margin-top:16px;">Students</div>
+  </nav>
+
+  <div class="student-list" id="sidebarList"></div>
+</aside>
+
+<!-- MAIN -->
+<main class="main">
+  <div class="topbar">
+    <div>
+      <div class="page-title">Student <span>Overview</span></div>
+      <div style="font-size:13px;color:var(--muted);margin-top:4px;">Academic Year 2024–25 · Class 10</div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <div class="search-bar">🔍 &nbsp;Search students...</div>
+      <div style="width:36px;height:36px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;">⚙</div>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats-grid">
+    <div class="stat-card c1">
+      <div class="stat-icon">◈</div>
+      <div class="stat-label">Total Students</div>
+      <div class="stat-value" style="color:var(--accent2);">20</div>
+      <div class="stat-sub">Enrolled this year</div>
+    </div>
+    <div class="stat-card c2">
+      <div class="stat-icon">⬟</div>
+      <div class="stat-label">Class Average</div>
+      <div class="stat-value" style="color:var(--teal);" id="classAvg">—</div>
+      <div class="stat-sub">Across all subjects</div>
+    </div>
+    <div class="stat-card c3">
+      <div class="stat-icon">⊛</div>
+      <div class="stat-label">Avg Attendance</div>
+      <div class="stat-value" style="color:var(--coral);" id="classAtt">—</div>
+      <div class="stat-sub">Present days</div>
+    </div>
+    <div class="stat-card c4">
+      <div class="stat-icon">✦</div>
+      <div class="stat-label">Top Performer</div>
+      <div class="stat-value" style="color:var(--amber);font-size:18px;padding-top:6px;" id="topStudent">—</div>
+      <div class="stat-sub" id="topScore">—</div>
+    </div>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <div class="tab active" onclick="showTab('overview',this)">Overview</div>
+    <div class="tab" onclick="showTab('subjects',this)">Subjects</div>
+    <div class="tab" onclick="showTab('attendance',this)">Attendance</div>
+    <div class="tab" onclick="showTab('rankings',this)">Rankings</div>
+  </div>
+
+  <!-- TAB: OVERVIEW -->
+  <div id="tab-overview">
+    <div class="grid-2">
+      <div class="card" style="grid-column:1/2">
+        <div class="card-title"><span class="dot" style="background:var(--accent)"></span>Class Performance Trend</div>
+        <div class="legend" id="legendPerf"></div>
+        <div class="chart-wrap" style="height:220px"><canvas id="chartTrend" role="img" aria-label="Line chart of subject performance trends over semesters">Subject performance trend chart.</canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--teal)"></span>Score Distribution</div>
+        <div class="chart-wrap" style="height:220px"><canvas id="chartDist" role="img" aria-label="Bar chart showing score distribution across grade bands">Score distribution across grade bands.</canvas></div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--amber)"></span>Subject Averages</div>
+        <div class="chart-wrap" style="height:200px"><canvas id="chartSubAvg" role="img" aria-label="Radar chart of average scores per subject">Subject averages radar chart.</canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--pink)"></span>Selected Student Detail</div>
+        <div id="detailPanel">
+          <div style="text-align:center;padding:40px 0;color:var(--dim);font-size:13px;">← Select a student from the sidebar</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: SUBJECTS -->
+  <div id="tab-subjects" style="display:none">
+    <div class="grid-3">
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--accent)"></span>Mathematics</div>
+        <div class="chart-wrap" style="height:180px"><canvas id="chartMath" role="img" aria-label="Bar chart for Mathematics scores">Mathematics scores.</canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--teal)"></span>Science</div>
+        <div class="chart-wrap" style="height:180px"><canvas id="chartSci" role="img" aria-label="Bar chart for Science scores">Science scores.</canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--coral)"></span>English</div>
+        <div class="chart-wrap" style="height:180px"><canvas id="chartEng" role="img" aria-label="Bar chart for English scores">English scores.</canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--amber)"></span>History</div>
+        <div class="chart-wrap" style="height:180px"><canvas id="chartHist" role="img" aria-label="Bar chart for History scores">History scores.</canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--blue)"></span>Computer Science</div>
+        <div class="chart-wrap" style="height:180px"><canvas id="chartCS" role="img" aria-label="Bar chart for Computer Science scores">Computer Science scores.</canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--green)"></span>Subject Comparison (Top 5)</div>
+        <div class="chart-wrap" style="height:180px"><canvas id="chartTop5" role="img" aria-label="Grouped bar chart comparing top 5 students across subjects">Top 5 students comparison.</canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: ATTENDANCE -->
+  <div id="tab-attendance" style="display:none">
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--teal)"></span>Monthly Attendance (%)</div>
+        <div class="chart-wrap" style="height:240px"><canvas id="chartAttMonth" role="img" aria-label="Line chart of monthly class attendance percentage">Monthly attendance.</canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--coral)"></span>Attendance by Student</div>
+        <div class="chart-wrap" style="height:240px"><canvas id="chartAttStudent" role="img" aria-label="Horizontal bar chart of attendance by student">Student attendance.</canvas></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--amber)"></span>Attendance vs Performance</div>
+      <div class="chart-wrap" style="height:240px"><canvas id="chartAttPerf" role="img" aria-label="Scatter chart showing correlation between attendance and performance">Attendance vs performance scatter.</canvas></div>
+    </div>
+  </div>
+
+  <!-- TAB: RANKINGS -->
+  <div id="tab-rankings" style="display:none">
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--accent)"></span>Student Rankings — All Subjects</div>
+      <div class="table-wrap">
+        <table id="rankTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Student</th>
+              <th>Math</th>
+              <th>Science</th>
+              <th>English</th>
+              <th>History</th>
+              <th>CS</th>
+              <th>Average</th>
+              <th>Attendance</th>
+              <th>Grade</th>
+            </tr>
+          </thead>
+          <tbody id="rankBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</main>
+</div>
+
+<script>
+const SUBJECTS = ['Math','Science','English','History','CS'];
+const SUBJECT_COLORS = ['#7c6eff','#00d4aa','#ff6b6b','#ffb347','#4fc3f7'];
+const MONTHS = ['Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr'];
+
+const STUDENTS = [
+  {name:'Arjun Sharma',    scores:[92,88,79,85,95], att:96},
+  {name:'Priya Nair',      scores:[85,91,94,88,90], att:98},
+  {name:'Rahul Verma',     scores:[78,72,81,75,68], att:82},
+  {name:'Sneha Iyer',      scores:[95,93,89,97,91], att:99},
+  {name:'Karthik Rajan',   scores:[70,65,73,68,72], att:78},
+  {name:'Divya Menon',     scores:[88,84,90,82,87], att:94},
+  {name:'Ankit Gupta',     scores:[62,70,58,65,74], att:75},
+  {name:'Lakshmi Pillai',  scores:[91,87,93,89,85], att:97},
+  {name:'Vikram Singh',    scores:[77,80,75,79,83], att:88},
+  {name:'Meera Krishnan',  scores:[83,86,88,84,80], att:92},
+  {name:'Rohan Patel',     scores:[66,60,69,63,58], att:70},
+  {name:'Aisha Banu',      scores:[90,94,87,92,96], att:95},
+  {name:'Sanjay Kumar',    scores:[74,68,77,71,65], att:80},
+  {name:'Pooja Desai',     scores:[89,85,91,87,82], att:93},
+  {name:'Ashok Rao',       scores:[57,62,55,60,66], att:68},
+  {name:'Nalini Reddy',    scores:[93,90,86,94,88], att:96},
+  {name:'Deepak Joshi',    scores:[72,75,70,73,78], att:85},
+  {name:'Saranya Venkat',  scores:[87,83,92,80,89], att:91},
+  {name:'Mohan Das',       scores:[64,58,67,61,55], att:72},
+  {name:'Kavitha Suresh',  scores:[96,97,94,98,99], att:100},
+];
+
+const AVATAR_COLORS = [
+  ['#7c6eff','#1a1530'],['#00d4aa','#00342a'],['#ff6b6b','#3a1010'],
+  ['#ffb347','#3a2800'],['#4fc3f7','#00274a'],['#f06292','#3a0020'],
+  ['#69f0ae','#003a1a'],['#b8aaff','#1a1040'],['#ffd47a','#3a2a00'],
+  ['#a5d6a7','#003a02'],
+];
+
+function avg(arr) { return Math.round(arr.reduce((a,b)=>a+b,0)/arr.length); }
+
+function gradeInfo(score) {
+  if(score>=90) return {g:'A+',c:'var(--green)'};
+  if(score>=80) return {g:'A', c:'var(--teal)'};
+  if(score>=70) return {g:'B', c:'var(--blue)'};
+  if(score>=60) return {g:'C', c:'var(--amber)'};
+  return {g:'D', c:'var(--coral)'};
+}
+
+function perfClass(score) {
+  if(score>=90) return 'perf-A';
+  if(score>=80) return 'perf-A';
+  if(score>=70) return 'perf-B';
+  if(score>=60) return 'perf-C';
+  return 'perf-D';
+}
+
+function initials(name) {
+  return name.split(' ').map(n=>n[0]).join('').slice(0,2);
+}
+
+let selectedStudent = null;
+
+// ── SIDEBAR ──
+const sidebarList = document.getElementById('sidebarList');
+const sorted = [...STUDENTS].map((s,i)=>({...s,idx:i})).sort((a,b)=>avg(b.scores)-avg(a.scores));
+
+sorted.forEach((s,rank) => {
+  const ac = AVATAR_COLORS[s.idx % AVATAR_COLORS.length];
+  const gi = gradeInfo(avg(s.scores));
+  const el = document.createElement('div');
+  el.className = 'student-item';
+  el.dataset.idx = s.idx;
+  el.innerHTML = `
+    <div class="student-avatar" style="background:${ac[1]};color:${ac[0]}">${initials(s.name)}</div>
+    <div class="student-name">${s.name}</div>
+    <div class="student-grade" style="background:rgba(124,110,255,0.1);color:${gi.c}">${gi.g}</div>
+  `;
+  el.addEventListener('click', () => selectStudent(s.idx, el));
+  sidebarList.appendChild(el);
+});
+
+// ── STATS ──
+const allAvg = Math.round(STUDENTS.reduce((a,s)=>a+avg(s.scores),0)/STUDENTS.length);
+const allAtt = Math.round(STUDENTS.reduce((a,s)=>a+s.att,0)/STUDENTS.length);
+const topS = [...STUDENTS].sort((a,b)=>avg(b.scores)-avg(a.scores))[0];
+
+document.getElementById('classAvg').textContent = allAvg + '%';
+document.getElementById('classAtt').textContent = allAtt + '%';
+document.getElementById('topStudent').textContent = topS.name.split(' ')[0];
+document.getElementById('topScore').textContent = avg(topS.scores) + '% average';
+
+// ── TABS ──
+function showTab(id, el) {
+  ['overview','subjects','attendance','rankings'].forEach(t => {
+    document.getElementById('tab-'+t).style.display = t===id?'':'none';
+  });
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+
+  if(id==='subjects' && !window._subChartsDone) { buildSubjectCharts(); window._subChartsDone=true; }
+  if(id==='attendance' && !window._attChartsDone) { buildAttendanceCharts(); window._attChartsDone=true; }
+  if(id==='rankings' && !window._rankDone) { buildRankings(); window._rankDone=true; }
+}
+
+// ── SELECT STUDENT ──
+function selectStudent(idx, el) {
+  document.querySelectorAll('.student-item').forEach(e=>e.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedStudent = idx;
+  renderDetail(idx);
+  highlightRankRow(idx);
+}
+
+function renderDetail(idx) {
+  const s = STUDENTS[idx];
+  const ac = AVATAR_COLORS[idx % AVATAR_COLORS.length];
+  const a = avg(s.scores);
+  const gi = gradeInfo(a);
+  let html = `
+    <div class="detail-header">
+      <div class="detail-avatar" style="background:${ac[1]};color:${ac[0]};width:52px;height:52px;font-size:18px;font-family:'Syne',sans-serif;font-weight:700;border-radius:50%;display:flex;align-items:center;justify-content:center;">${initials(s.name)}</div>
+      <div>
+        <div class="detail-name">${s.name}</div>
+        <div class="detail-meta">Attendance: ${s.att}% &nbsp;·&nbsp; Rank: #${getRank(idx)+1}</div>
+      </div>
+      <div class="grade-badge" style="color:${gi.c};border-color:${gi.c};">${gi.g}</div>
+    </div>
+  `;
+  SUBJECTS.forEach((sub,i) => {
+    const sc = s.scores[i];
+    html += `
+      <div class="subject-row">
+        <div class="subject-name">${sub}</div>
+        <div class="subject-bar-wrap"><div class="subject-bar" style="width:${sc}%;background:${SUBJECT_COLORS[i]}"></div></div>
+        <div class="subject-score" style="color:${SUBJECT_COLORS[i]}">${sc}</div>
+      </div>`;
+  });
+  document.getElementById('detailPanel').innerHTML = html;
+}
+
+function getRank(idx) {
+  return sorted.findIndex(s=>s.idx===idx);
+}
+
+function highlightRankRow(idx) {
+  document.querySelectorAll('#rankBody tr').forEach(r=>{
+    r.classList.toggle('selected-row', r.dataset.idx==idx);
+  });
+}
+
+// ── CHART: TREND ──
+const trendData = {
+  labels: MONTHS,
+  datasets: SUBJECTS.map((sub,i)=>({
+    label: sub,
+    data: MONTHS.map((_,m)=>Math.round(60+Math.random()*35+m*0.5)),
+    borderColor: SUBJECT_COLORS[i],
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    pointRadius: 3,
+    pointBackgroundColor: SUBJECT_COLORS[i],
+    tension: 0.4,
+  }))
+};
+
+const legendDiv = document.getElementById('legendPerf');
+SUBJECTS.forEach((sub,i) => {
+  legendDiv.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:${SUBJECT_COLORS[i]}"></span>${sub}</span>`;
+});
+
+new Chart(document.getElementById('chartTrend'), {
+  type:'line',
+  data: trendData,
+  options:{
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{display:false} },
+    scales:{
+      x:{ grid:{color:'rgba(255,255,255,0.04)'}, ticks:{color:'#8b8aaa',font:{size:11}} },
+      y:{ grid:{color:'rgba(255,255,255,0.04)'}, ticks:{color:'#8b8aaa',font:{size:11}}, min:50, max:100 }
+    }
+  }
+});
+
+// ── CHART: DISTRIBUTION ──
+const bands = ['50–59','60–69','70–79','80–89','90–100'];
+const bandCounts = [0,0,0,0,0];
+STUDENTS.forEach(s=>{
+  const a=avg(s.scores);
+  if(a<60) bandCounts[0]++;
+  else if(a<70) bandCounts[1]++;
+  else if(a<80) bandCounts[2]++;
+  else if(a<90) bandCounts[3]++;
+  else bandCounts[4]++;
+});
+
+new Chart(document.getElementById('chartDist'),{
+  type:'bar',
+  data:{
+    labels:bands,
+    datasets:[{
+      label:'Students',
+      data:bandCounts,
+      backgroundColor:['rgba(255,107,107,0.7)','rgba(255,179,71,0.7)','rgba(79,195,247,0.7)','rgba(0,212,170,0.7)','rgba(105,240,174,0.7)'],
+      borderRadius:6,
+    }]
+  },
+  options:{
+    responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false}},
+    scales:{
+      x:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8b8aaa',font:{size:11}}},
+      y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8b8aaa',font:{size:11}},beginAtZero:true,max:8}
+    }
+  }
+});
+
+// ── CHART: SUBJECT AVG RADAR ──
+const subjectAvgs = SUBJECTS.map((_,i)=>Math.round(STUDENTS.reduce((a,s)=>a+s.scores[i],0)/STUDENTS.length));
+
+new Chart(document.getElementById('chartSubAvg'),{
+  type:'radar',
+  data:{
+    labels:SUBJECTS,
+    datasets:[{
+      label:'Class Avg',
+      data:subjectAvgs,
+      borderColor:'rgba(124,110,255,0.9)',
+      backgroundColor:'rgba(124,110,255,0.12)',
+      pointBackgroundColor:'rgba(124,110,255,1)',
+      pointRadius:4,
+      borderWidth:2,
+    }]
+  },
+  options:{
+    responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false}},
+    scales:{
+      r:{
+        grid:{color:'rgba(255,255,255,0.06)'},
+        angleLines:{color:'rgba(255,255,255,0.06)'},
+        pointLabels:{color:'#8b8aaa',font:{size:12}},
+        ticks:{display:false},
+        min:50,max:100
+      }
+    }
+  }
+});
+
+// ── SUBJECT CHARTS ──
+function buildSubjectCharts() {
+  const names = STUDENTS.map(s=>s.name.split(' ')[0]);
+  SUBJECTS.forEach((sub,si)=>{
+    const ids=['chartMath','chartSci','chartEng','chartHist','chartCS'];
+    const data=STUDENTS.map(s=>s.scores[si]);
+    new Chart(document.getElementById(ids[si]),{
+      type:'bar',
+      data:{
+        labels:names,
+        datasets:[{
+          label:sub,
+          data:data,
+          backgroundColor:STUDENTS.map(s=>{
+            const v=s.scores[si];
+            return v>=80?'rgba(105,240,174,0.65)':v>=70?'rgba(79,195,247,0.65)':v>=60?'rgba(255,179,71,0.65)':'rgba(255,107,107,0.65)';
+          }),
+          borderRadius:4,
+        }]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{
+          x:{grid:{display:false},ticks:{color:'#8b8aaa',font:{size:9},maxRotation:45}},
+          y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8b8aaa',font:{size:10}},min:40,max:100}
+        }
+      }
+    });
+  });
+
+  // Top 5 comparison
+  const top5 = sorted.slice(0,5);
+  new Chart(document.getElementById('chartTop5'),{
+    type:'bar',
+    data:{
+      labels:top5.map(s=>s.name.split(' ')[0]),
+      datasets:SUBJECTS.map((sub,i)=>({
+        label:sub,
+        data:top5.map(s=>s.scores[i]),
+        backgroundColor:SUBJECT_COLORS[i]+'cc',
+        borderRadius:3,
+      }))
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{display:false},ticks:{color:'#8b8aaa',font:{size:10}}},
+        y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8b8aaa',font:{size:9}},min:60,max:100}
+      }
+    }
+  });
+}
+
+// ── ATTENDANCE CHARTS ──
+function buildAttendanceCharts() {
+  const monthlyAtt = MONTHS.map((_,m)=>Math.round(82+Math.random()*16+m*0.4));
+  new Chart(document.getElementById('chartAttMonth'),{
+    type:'line',
+    data:{
+      labels:MONTHS,
+      datasets:[{
+        label:'Attendance %',
+        data:monthlyAtt,
+        borderColor:'#00d4aa',
+        backgroundColor:'rgba(0,212,170,0.08)',
+        fill:true,
+        tension:0.4,
+        pointRadius:4,
+        pointBackgroundColor:'#00d4aa',
+        borderWidth:2,
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8b8aaa',font:{size:11}}},
+        y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8b8aaa',font:{size:11}},min:70,max:100}
+      }
+    }
+  });
+
+  new Chart(document.getElementById('chartAttStudent'),{
+    type:'bar',
+    data:{
+      labels:STUDENTS.map(s=>s.name.split(' ')[0]),
+      datasets:[{
+        label:'Attendance %',
+        data:STUDENTS.map(s=>s.att),
+        backgroundColor:STUDENTS.map(s=>s.att>=90?'rgba(105,240,174,0.7)':s.att>=80?'rgba(79,195,247,0.7)':'rgba(255,107,107,0.7)'),
+        borderRadius:4,
+      }]
+    },
+    options:{
+      indexAxis:'y',
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8b8aaa',font:{size:10}},min:60,max:100},
+        y:{grid:{display:false},ticks:{color:'#8b8aaa',font:{size:10}}}
+      }
+    }
+  });
+
+  // Scatter: attendance vs avg score
+  new Chart(document.getElementById('chartAttPerf'),{
+    type:'scatter',
+    data:{
+      datasets:[{
+        label:'Students',
+        data:STUDENTS.map(s=>({x:s.att,y:avg(s.scores)})),
+        backgroundColor:'rgba(124,110,255,0.65)',
+        pointRadius:7,
+        pointHoverRadius:9,
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8b8aaa',font:{size:11}},title:{display:true,text:'Attendance %',color:'#8b8aaa',font:{size:11}},min:60,max:105},
+        y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8b8aaa',font:{size:11}},title:{display:true,text:'Avg Score %',color:'#8b8aaa',font:{size:11}},min:50,max:105}
+      }
+    }
+  });
+}
+
+// ── RANKINGS TABLE ──
+function buildRankings() {
+  const body = document.getElementById('rankBody');
+  sorted.forEach((s,rank)=>{
+    const a=avg(s.scores);
+    const gi=gradeInfo(a);
+    const ac=AVATAR_COLORS[s.idx%AVATAR_COLORS.length];
+    const tr=document.createElement('tr');
+    tr.dataset.idx=s.idx;
+    tr.innerHTML=`
+      <td><span class="rank-badge">${rank+1}</span></td>
+      <td style="display:flex;align-items:center;gap:8px;min-height:40px;">
+        <div style="width:26px;height:26px;border-radius:50%;background:${ac[1]};color:${ac[0]};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;font-family:'Syne',sans-serif;">${initials(s.name)}</div>
+        ${s.name}
+      </td>
+      ${s.scores.map((sc,i)=>`<td style="color:${SUBJECT_COLORS[i]};font-family:'DM Mono',monospace;font-size:13px">${sc}</td>`).join('')}
+      <td style="font-family:'DM Mono',monospace;font-size:13px;font-weight:500;color:var(--text)">${a}%</td>
+      <td style="font-family:'DM Mono',monospace;font-size:13px;color:${s.att>=90?'var(--green)':s.att>=80?'var(--blue)':'var(--coral)'}">${s.att}%</td>
+      <td><span class="perf-pill ${a>=90?'perf-A':a>=80?'perf-A':a>=70?'perf-B':a>=60?'perf-C':'perf-D'}" style="color:${gi.c};background:${gi.c}22">${gi.g}</span></td>
+    `;
+    tr.addEventListener('click',()=>{
+      const sideEl=[...document.querySelectorAll('.student-item')].find(e=>e.dataset.idx==s.idx);
+      if(sideEl) selectStudent(s.idx,sideEl);
+      showTab('overview',document.querySelector('.tab'));
+      document.querySelectorAll('.tab')[0].classList.add('active');
+      document.querySelectorAll('.tab').forEach((t,i)=>i>0&&t.classList.remove('active'));
+    });
+    body.appendChild(tr);
+  });
+}
+</script>
+</body>
+</html>
