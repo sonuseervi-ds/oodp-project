@@ -1,0 +1,229 @@
+#pragma once
+/*
+ * json.h — Lightweight JSON parser & builder (no external deps)
+ * Supports: null, bool, number (double), string, array, object
+ */
+
+#include <string>
+#include <vector>
+#include <map>
+#include <sstream>
+#include <stdexcept>
+#include <variant>
+#include <memory>
+#include <iomanip>
+#include <cmath>
+
+struct Json;
+using JsonObj = std::map<std::string, Json>;
+using JsonArr = std::vector<Json>;
+
+struct Json {
+    enum Type { Null, Bool, Number, String, Array, Object };
+
+    Type type = Null;
+    bool        b   = false;
+    double      n   = 0;
+    std::string s;
+    std::shared_ptr<JsonArr> arr;
+    std::shared_ptr<JsonObj> obj;
+
+    Json() : type(Null) {}
+    Json(std::nullptr_t) : type(Null) {}
+    Json(bool v)   : type(Bool),   b(v) {}
+    Json(int v)    : type(Number), n(v) {}
+    Json(double v) : type(Number), n(v) {}
+    Json(const std::string& v) : type(String), s(v) {}
+    Json(const char* v) : type(String), s(v) {}
+    Json(JsonArr v) : type(Array),  arr(std::make_shared<JsonArr>(std::move(v))) {}
+    Json(JsonObj v) : type(Object), obj(std::make_shared<JsonObj>(std::move(v))) {}
+
+    bool isNull()   const { return type == Null; }
+    bool isBool()   const { return type == Bool; }
+    bool isNumber() const { return type == Number; }
+    bool isString() const { return type == String; }
+    bool isArray()  const { return type == Array;  }
+    bool isObject() const { return type == Object; }
+
+    bool        asBool()   const { return b; }
+    double      asDouble() const { return n; }
+    int         asInt()    const { return (int)n; }
+    std::string asString() const { return s; }
+    JsonArr&    asArray()        { return *arr; }
+    const JsonArr& asArray()  const { return *arr; }
+    JsonObj&    asObject()       { return *obj; }
+    const JsonObj& asObject() const { return *obj; }
+
+    Json& operator[](const std::string& key) {
+        if (type != Object) { type = Object; obj = std::make_shared<JsonObj>(); }
+        return (*obj)[key];
+    }
+    const Json& operator[](const std::string& key) const {
+        static Json null;
+        if (!obj) return null;
+        auto it = obj->find(key);
+        return (it == obj->end()) ? null : it->second;
+    }
+    bool has(const std::string& key) const {
+        return obj && obj->find(key) != obj->end();
+    }
+    Json& operator[](size_t i) { return (*arr)[i]; }
+    const Json& operator[](size_t i) const { return (*arr)[i]; }
+    size_t size() const {
+        if (isArray())  return arr->size();
+        if (isObject()) return obj->size();
+        return 0;
+    }
+
+    // ── Serialization ─────────────────────────────────────────────────────────
+    std::string dump(int indent = -1, int depth = 0) const {
+        std::ostringstream o;
+        std::string nl  = indent >= 0 ? "\n" : "";
+        std::string sp  = indent >= 0 ? std::string(depth * indent, ' ') : "";
+        std::string sp2 = indent >= 0 ? std::string((depth+1) * indent, ' ') : "";
+        std::string sep = indent >= 0 ? " " : "";
+
+        switch (type) {
+            case Null:   o << "null"; break;
+            case Bool:   o << (b ? "true" : "false"); break;
+            case Number:
+                if (std::floor(n) == n && std::abs(n) < 1e15)
+                    o << (long long)n;
+                else
+                    o << std::setprecision(10) << n;
+                break;
+            case String:
+                o << '"';
+                for (char c : s) {
+                    switch(c) {
+                        case '"':  o << "\\\""; break;
+                        case '\\': o << "\\\\"; break;
+                        case '\n': o << "\\n";  break;
+                        case '\r': o << "\\r";  break;
+                        case '\t': o << "\\t";  break;
+                        default:   o << c;      break;
+                    }
+                }
+                o << '"';
+                break;
+            case Array:
+                if (arr->empty()) { o << "[]"; break; }
+                o << "[" << nl;
+                for (size_t i = 0; i < arr->size(); i++) {
+                    o << sp2 << (*arr)[i].dump(indent, depth+1);
+                    if (i+1 < arr->size()) o << ",";
+                    o << nl;
+                }
+                o << sp << "]";
+                break;
+            case Object:
+                if (obj->empty()) { o << "{}"; break; }
+                o << "{" << nl;
+                size_t cnt = 0;
+                for (auto& [k, v] : *obj) {
+                    o << sp2 << "\"" << k << "\":" << sep << v.dump(indent, depth+1);
+                    if (++cnt < obj->size()) o << ",";
+                    o << nl;
+                }
+                o << sp << "}";
+                break;
+        }
+        return o.str();
+    }
+
+    // ── Parsing ───────────────────────────────────────────────────────────────
+    static Json parse(const std::string& src) {
+        size_t pos = 0;
+        Json val = parseValue(src, pos);
+        return val;
+    }
+
+private:
+    static void skip(const std::string& s, size_t& p) {
+        while (p < s.size() && std::isspace((unsigned char)s[p])) p++;
+    }
+
+    static Json parseValue(const std::string& s, size_t& p) {
+        skip(s, p);
+        if (p >= s.size()) throw std::runtime_error("Unexpected EOF");
+        char c = s[p];
+        if (c == '"') return parseString(s, p);
+        if (c == '{') return parseObject(s, p);
+        if (c == '[') return parseArray(s, p);
+        if (c == 't') { p+=4; return Json(true);  }
+        if (c == 'f') { p+=5; return Json(false); }
+        if (c == 'n') { p+=4; return Json(nullptr); }
+        if (c == '-' || std::isdigit((unsigned char)c)) return parseNumber(s, p);
+        throw std::runtime_error(std::string("Unexpected char: ") + c);
+    }
+
+    static std::string parseRawString(const std::string& s, size_t& p) {
+        p++; // skip "
+        std::string result;
+        while (p < s.size() && s[p] != '"') {
+            if (s[p] == '\\') {
+                p++;
+                switch(s[p]) {
+                    case '"':  result += '"';  break;
+                    case '\\': result += '\\'; break;
+                    case '/':  result += '/';  break;
+                    case 'n':  result += '\n'; break;
+                    case 'r':  result += '\r'; break;
+                    case 't':  result += '\t'; break;
+                    default:   result += s[p]; break;
+                }
+            } else {
+                result += s[p];
+            }
+            p++;
+        }
+        p++; // skip closing "
+        return result;
+    }
+
+    static Json parseString(const std::string& s, size_t& p) {
+        return Json(parseRawString(s, p));
+    }
+
+    static Json parseNumber(const std::string& s, size_t& p) {
+        size_t start = p;
+        if (s[p] == '-') p++;
+        while (p < s.size() && (std::isdigit((unsigned char)s[p]) || s[p]=='.' || s[p]=='e' || s[p]=='E' || s[p]=='+' || s[p]=='-')) p++;
+        return Json(std::stod(s.substr(start, p - start)));
+    }
+
+    static Json parseArray(const std::string& s, size_t& p) {
+        p++; // [
+        JsonArr arr;
+        skip(s, p);
+        if (p < s.size() && s[p] == ']') { p++; return Json(arr); }
+        while (p < s.size()) {
+            arr.push_back(parseValue(s, p));
+            skip(s, p);
+            if (p < s.size() && s[p] == ',') { p++; continue; }
+            break;
+        }
+        if (p < s.size() && s[p] == ']') p++;
+        return Json(arr);
+    }
+
+    static Json parseObject(const std::string& s, size_t& p) {
+        p++; // {
+        JsonObj obj;
+        skip(s, p);
+        if (p < s.size() && s[p] == '}') { p++; return Json(obj); }
+        while (p < s.size()) {
+            skip(s, p);
+            std::string key = parseRawString(s, p);
+            skip(s, p);
+            p++; // :
+            Json val = parseValue(s, p);
+            obj[key] = val;
+            skip(s, p);
+            if (p < s.size() && s[p] == ',') { p++; continue; }
+            break;
+        }
+        if (p < s.size() && s[p] == '}') p++;
+        return Json(obj);
+    }
+};
